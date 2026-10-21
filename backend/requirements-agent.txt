@@ -1,0 +1,2 @@
+# Optional Fetch.ai runtime. Install only when configuring actual agent messaging.
+uagents>=0.22,<1

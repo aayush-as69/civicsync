@@ -1,0 +1,8 @@
+# Python dependencies installed by Vercel for the serverless API (api/index.py).
+Flask>=3.1,<4
+Flask-Cors>=5.0,<7
+Flask-SQLAlchemy>=3.1,<4
+SQLAlchemy>=2.0,<3
+python-dotenv>=1.0,<2
+# Needed only when DATABASE_URL points at Postgres (recommended on Vercel).
+psycopg2-binary>=2.9,<3
