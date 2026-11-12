@@ -1,157 +1,169 @@
 # CivicSync — Team BitBenders
 
-**From Civic Complaint to Coordinated Resolution.** CivicSync is a local-first hackathon prototype for converting natural-language civic maintenance reports into persistent, traceable service tickets.
+> **From civic complaint to coordinated resolution.**
 
-## What works
+CivicSync is a local-first civic maintenance prototype that converts natural-language complaints into structured, traceable service tickets. It combines a React/Vite interface, Flask API, database-backed routing and optional Gemini analysis.
 
-- React + TypeScript + Vite frontend with seven functional routes.
-- Flask REST API with SQLite local fallback and SQLAlchemy ORM models compatible with MySQL configuration.
-- Structured Gemini REST API analysis when configured, with validated JSON output and explicit `local-fallback` behavior if Gemini is absent or unavailable.
-- Three logical agent roles: User Interface Agent, Analysis Agent, and Routing Agent.
-- Database-backed department rules, idempotency keys, ticket status history, audit-style workflow events, and controlled demo seed data.
-- Token-protected citizen ticket retrieval. Administrative endpoints require the clearly marked local demo admin header; replace this mechanism with real authentication for production.
+## Problem
+
+Citizens can describe maintenance problems naturally without knowing the responsible department. CivicSync turns that report into:
+
+**Complaint → Analysis → Category → Department → Ticket → Status history → Workflow**
+
+## Implemented capabilities
+
+| Capability | Status |
+|---|---|
+| Complaint submission | ✅ |
+| Structured analysis | ✅ |
+| Gemini analysis | ✅ Optional |
+| Deterministic fallback | ✅ |
+| Department routing | ✅ |
+| Ticket history | ✅ |
+| Idempotent ticket creation | ✅ |
+| Citizen tracking token | ✅ |
+| Demo admin dashboard | ✅ Controlled demo |
+| Workflow events | ✅ |
+| Fetch.ai/uAgents transport | ⚠️ Separate runtime |
+| Production authentication | ❌ Not included |
+
+## Architecture
+
+~~~text
+React + Vite
+      │
+      ▼
+Flask REST API
+      │
+      ├── Analysis → Gemini or deterministic fallback
+      ├── Routing  → department rules
+      └── SQLAlchemy → SQLite / MySQL
+                           │
+                           ▼
+                    Ticket + History
+~~~
+
+Flask remains authoritative for validation and persistence. AI analysis produces a constrained proposal and does not directly write database records.
+
+## Project structure
+
+~~~text
+frontend/    React + TypeScript + Vite
+backend/     Flask API, agents, models and tests
+api/         Vercel serverless entry point
+docs/        Technical documentation
+~~~
 
 ## Quick start
 
-Use two terminals from the project root.
+### Backend
 
-```powershell
+~~~powershell
 Copy-Item .env.example .env
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
+python -m pip install -r backend\requirements.txt
 python backend\app.py
-```
+~~~
 
-Then:
+### Frontend
 
-```powershell
+~~~powershell
 cd frontend
-npm install
+npm ci
 npm run dev
-```
+~~~
 
-Open the Vite address (normally `http://localhost:5173`). The API runs at `http://127.0.0.1:5000`.
-
-## Demo flow
-
-1. Open **Report a Complaint** and enter a report such as: `The streetlight outside the college gate has been broken for three days.` Location: `College main gate`.
-2. Select **Preview analysis** to inspect the structured local analysis result.
-3. Create the ticket. The confirmation includes a real reference and tracking token in the tracking link.
-4. Follow the tracking link to view the protected ticket and its persisted timeline.
-5. Use **Department Dashboard** to advance statuses in the clearly labelled local demo-admin workspace.
-6. View **AI Agents** for actual stored local workflow events and runtime configuration—not fabricated remote connections.
-
-Controlled sample records seed only once and carry a `Demo` label.
+Open the Vite URL, normally http://localhost:5173. The Flask API normally runs at http://127.0.0.1:5000.
 
 ## Configuration
 
-Copy `.env.example`; never commit `.env`.
-
 | Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Defaults to `sqlite:///civicsync.db`. Set a supported SQLAlchemy MySQL URL for production. |
-| `SECRET_KEY` | Required secure secret outside local development. |
-| `FRONTEND_URL` | Comma-separated permitted browser origins for CORS. |
-| `GEMINI_API_KEY` | Enables a real Gemini analysis request. Blank or unavailable means local fallback. |
-| `ALLOW_DEMO_ADMIN_HEADER` | Enables the insecure `X-Demo-Role: admin` header only for a controlled local demo. |
-| `ADMIN_API_TOKEN` | Optional server-side bearer token for protected API requests; never bundle it into frontend code. |
-| `UAGENTS_ENABLED` / `AGENTVERSE_URL` | Declare optional Fetch.ai/uAgents configuration. They do not by themselves prove remote agent messaging is running. |
-| `DEMO_MODE` | Enables controlled seed records in local setup. |
+|---|---|
+| DATABASE_URL | SQLAlchemy database URL |
+| SECRET_KEY | Application signing secret |
+| FRONTEND_URL | Allowed browser origin(s) |
+| GEMINI_API_KEY | Enables live Gemini analysis |
+| DEMO_MODE | Enables controlled sample records |
+| ALLOW_DEMO_ADMIN_HEADER | Local/demo-only admin shortcut |
+| ADMIN_API_TOKEN | Optional server-side bearer token |
+| UAGENTS_ENABLED / AGENTVERSE_URL | Optional distributed-agent configuration |
 
-## Architecture and Fetch.ai boundary
+Never put secrets or agent seeds in frontend code.
 
-`Browser → Flask UI Agent → Analysis Agent → validated contract → Routing Agent → SQLAlchemy transaction → ticket/history/event records`
+## Demo flow
 
-- **Flask** exposes the REST boundary and owns database transactions.
-- **Analysis Agent** produces a constrained JSON contract. The deterministic fallback uses rules and reports `local-fallback` in each ticket.
-- **Routing Agent** resolves a category through database `Department` mappings; unmatched reports route to **General Review Queue**.
-- **uAgents/Agentverse** are not silently emulated. This prototype is fully usable with local function orchestration. A remote uAgents implementation should be run as a separate process with registered addresses, protocol schemas, and verified health checks before its UI state is presented as connected.
+1. Open Report a Complaint.
+2. Enter a maintenance complaint and location.
+3. Preview the structured analysis.
+4. Create the ticket.
+5. Use the tracking token to retrieve the protected ticket.
+6. Open Department Dashboard to advance the demo workflow.
+7. Inspect AI Agents for actual stored workflow events and configuration status.
 
-To prepare the optional actual uAgents transport, install `pip install -r backend/requirements-agent.txt`, set distinct `CIVICSYNC_ANALYSIS_AGENT_SEED` and `CIVICSYNC_ROUTING_AGENT_SEED` values in the deployment secret store, and run `python backend/uagents_runtime.py` once per role (`CIVICSYNC_AGENT_ROLE=analysis` or `routing`). The supplied runtime uses real `uagents` models and message handlers. The analysis process can forward to `CIVICSYNC_ROUTING_AGENT_ADDRESS`; the routing process can submit the complaint to `CIVICSYNC_FLASK_API_URL`, where Flask validates and persists it with an idempotency key. Configure both agent seeds and the routing agent address before testing this optional path. Flask remains authoritative for ticket persistence; this remote path is not automatically started by the main app.
+## API
 
-## API summary
+| Endpoint | Access | Purpose |
+|---|---|---|
+| GET /api/health | Public | Health/configuration status |
+| POST /api/complaints/analyze | Public | Unsaved structured analysis |
+| POST /api/complaints | Public | Validate, route and persist ticket |
+| GET /api/tickets/<reference> | Tracking token | Protected citizen lookup |
+| GET /api/tickets | Demo admin | Queue/list tickets |
+| PATCH /api/tickets/<reference>/status | Demo admin | Status transition and history |
+| GET /api/departments | Public | Department mappings |
+| GET /api/dashboard/summary | Demo admin | Dashboard metrics |
+| GET /api/agents/status | Public | Integration/configuration status |
+| GET /api/agents/events | Demo admin | Persisted workflow events |
 
-| Endpoint | Access | Description |
-| --- | --- | --- |
-| `GET /api/health` | public | Health and truthful integration configuration. |
-| `POST /api/complaints/analyze` | public | Unsaved structured analysis. |
-| `POST /api/complaints` | public | Validates, routes, and persists a ticket. Supports `Idempotency-Key`. |
-| `GET /api/tickets/<reference>` | matching token | Private ticket lookup using `X-Tracking-Token`. |
-| `GET /api/tickets` | demo admin | Filtered, paginated service queue. |
-| `PATCH /api/tickets/<reference>/status` | demo admin | Legal status transition plus history record. |
-| `GET /api/departments` | public | Configured department mappings. |
-| `GET /api/dashboard/summary` | demo admin | Database-derived metrics. |
-| `GET /api/agents/status` | public | Actual local/configuration status. |
-| `GET /api/agents/events` | demo admin | Persisted workflow events. |
+## Security boundary
 
-## Tests and production build
+The X-Demo-Role: admin mechanism is **not authentication**. It exists only for a controlled local/hackathon demonstration.
 
-```powershell
+Production requires real administrator authentication, secure secrets, rate limiting, precise CORS, a production database with migrations and server-side credential handling.
+
+Optional uAgents/Agentverse processes must be independently started and health-verified before the UI or documentation claims distributed agent execution.
+
+## Testing
+
+~~~powershell
 cd backend
-pytest -q
+python -m pytest -q
 
 cd ..\frontend
+npm ci
 npm run build
-```
+~~~
 
-## Production notes
+## Deployment
 
-Before deployment: use MySQL with migrations, set a strong `SECRET_KEY`, set a precise production `FRONTEND_URL`, turn off demo mode, add rate limiting, and replace the demo `X-Demo-Role` mechanism with authenticated user and administrator roles. Gemini and Agentverse credentials belong in the deployment secret store—not in files or source control.
+The repository includes a Vercel deployment path using the frontend as the static surface and Flask through api/index.py. Use persistent database storage for production rather than ephemeral SQLite.
+
+See docs/DEPLOYMENT.md and docs/INTEGRATIONS.md for deployment and optional agent configuration.
+
+## Documentation
+
+Start with docs/README.md.
+
+- docs/ARCHITECTURE.md — system and data flow
+- docs/SETUP.md — local configuration
+- docs/AI.md — Gemini and fallback behavior
+- docs/API.md — endpoint details
+- docs/SECURITY.md — security boundary
+- docs/TESTING.md — verification
+- docs/DEPLOYMENT.md — deployment
+- docs/INTEGRATIONS.md — uAgents/Agentverse boundary
 
 ## Team BitBenders
 
-- Aayush Singh — Team Leader
-- Ayush Yadav Yadav — UI/UX Designer
-- Kaushal Jha Jha — Frontend Developer
+- Aayush Singh — Team Leader / Backend & Agent Architecture
+- Ayush Yadav — UI/UX Designer
+- Kaushal Jha — Frontend Developer
 
+## Project status
 
-## Local setup and verification
+**Hackathon prototype.** The local workflow is functional, while production authentication, migration management, rate limiting and distributed-agent verification remain deployment requirements.
 
-1. Copy `.env.example` to `.env` in the project root. Keep `DEMO_MODE=true` and `ALLOW_DEMO_ADMIN_HEADER=true` only for a local presentation; do not expose this mode to the public internet.
-2. Install backend dependencies: `python -m pip install -r backend/requirements.txt`.
-3. Start the backend from `backend/`: `python app.py`.
-4. Install frontend dependencies from `frontend/`: `npm ci`, then run `npm run dev`. For a deployed frontend, set `VITE_API_URL` to the deployed backend API base (for example, `https://your-api.example.com/api`) before building.
-5. Run backend tests from `backend/`: `python -m pytest -q`.
-6. Verify the frontend production build from `frontend/`: `npm run build`.
+## License
 
-For production, set `APP_ENV=production`, `DEMO_MODE=false`, `ALLOW_DEMO_ADMIN_HEADER=false`, use a strong `SECRET_KEY`, configure a production database and migrations, add rate limiting, and implement a real administrator login/session flow before exposing administrator functions. The current frontend's `X-Demo-Role` header is strictly for a controlled local demo and is not production authentication. Do not bundle `ADMIN_API_TOKEN` into frontend JavaScript. Configure `GEMINI_API_KEY` to enable Gemini analysis; the app explicitly falls back to local keyword rules if the provider is unavailable.
-
-See `PATCH_NOTES.md` for the fixes and remaining integration boundaries.
-
-
-## Integration boundaries (read before presenting)
-
-- **Local workflow is the default.** The normal complaint endpoint uses local Python orchestration; the AI Agents page describes that honestly.
-- **Gemini is optional and unverified until tested live.** A configured key enables an HTTP request; provider failure falls back to local rules. Never commit `.env` or expose API keys.
-- **Distributed uAgents are optional.** Start separate analysis and routing processes, configure their seeds/address and `CIVICSYNC_FLASK_API_URL`, then verify the returned `RoutingResult` and persisted ticket end to end before claiming remote multi-agent execution.
-- **Admin UI is demo-only.** `X-Demo-Role` is not authentication. The backend supports a server-side bearer token for API access, but a full user login/session flow is not included in this prototype.
-- **Database schema changes need migrations.** `db.create_all()` is for initial local setup; it does not upgrade existing production tables.
-- **Verification must be run locally:** backend `python -m pytest -q`; frontend `npm ci` and `npm run build`. Static syntax checks alone do not prove runtime behavior.
-
-## Deploying to Vercel
-
-The repo deploys as a single Vercel project: `frontend/` is built with Vite and served statically, and Flask runs as a Python serverless function (`api/index.py`) behind `/api/*` (see `vercel.json`). Frontend and API share one domain, so no CORS setup or `VITE_API_URL` is needed.
-
-**Via dashboard:** push the repo to GitHub → *Add New Project* → import it → leave Root Directory as the repo root (the framework preset is overridden by `vercel.json`) → set the environment variables below → Deploy.
-
-**Via CLI:**
-
-```bash
-npm i -g vercel
-vercel          # preview
-vercel --prod   # production
-```
-
-**Environment variables (Project Settings → Environment Variables):**
-
-| Variable | Value |
-| --- | --- |
-| `SECRET_KEY` | Random string, 32+ characters |
-| `DATABASE_URL` | Postgres URL (Neon/Supabase/Vercel Postgres). Strongly recommended: without it the app uses SQLite in `/tmp`, which is wiped on cold starts. |
-| `DEMO_MODE` | `true` for a hackathon demo (seeds sample data); `false` otherwise |
-| `ALLOW_DEMO_ADMIN_HEADER` | `true` only for a public *demo* so the dashboard works; it is not real authentication |
-| `ADMIN_API_TOKEN` | Optional server-side bearer token |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional Gemini analysis |
-
-Do not set `APP_ENV=production` while the demo-admin header is on; the app refuses to start in that combination. The optional uAgents runtime is not deployed to Vercel (it needs long-running processes).
+See LICENSE.
